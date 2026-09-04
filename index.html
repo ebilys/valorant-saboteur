@@ -303,35 +303,7 @@ function openOverlay(){
 }
 function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c]))}
 
-function launchVoteMode(){
-  const app=document.body;
-  let sync=null;try{sync=JSON.parse(localStorage.getItem("saboteurVoteSync")||"null")}catch(e){}
-  if(location.hash.startsWith("#sync=")){try{sync=JSON.parse(decodeURIComponent(escape(atob(location.hash.slice(6)))));localStorage.setItem("saboteurVoteSync",JSON.stringify(sync));history.replaceState(null,"",location.pathname+"?vote=1")}catch(e){}}
-  document.body.innerHTML=`<div class="portal" style="margin:40px auto;max-width:520px"><h1 style="text-align:center">LE <span style="color:#ff4655">SABOTEUR</span></h1><div id="voteApp"><p class="muted">Entre ton code personnel.</p><input id="voteCode" class="voteCode" placeholder="XXXXXX-XXXXXX"><button id="voteGo" style="width:100%;margin-top:10px">ACCÉDER</button></div></div>`;
-  const out=document.getElementById("voteApp");
-  if(!sync){out.innerHTML='<p class="muted">Ce lien est permanent, mais ce téléphone n’a pas encore reçu la synchronisation de la manche. Demande le lien « Synchroniser la manche » à l’organisateur.</p>';return}
-  document.getElementById("voteGo").onclick=()=>{
-    const c=document.getElementById("voteCode").value.trim().toUpperCase(),p=sync.players.find(x=>sync.access[x.id]===c);
-    if(!p){out.innerHTML='<div class="voteStatus voteErr">⚠️ Vote invalide.</div>';return}
-    const r=sync.activeRound;if(!r){out.innerHTML='<div class="voteStatus voteErr">⚠️ Aucune manche en cours.</div>';return}
-    const team=sync.teams.A.includes(p.id)?"A":sync.teams.B.includes(p.id)?"B":null;if(!team){out.innerHTML='<div class="voteStatus voteErr">⚠️ Tu n’es actuellement affecté à aucune équipe.</div>';return}
-    const key="saboteurVoted_"+p.id+"_"+r.number;if(localStorage.getItem(key)){out.innerHTML='<div class="voteStatus voteOk">✅ TON VOTE A ÉTÉ ENREGISTRÉ</div><p class="muted">Tu ne peux plus le modifier pour cette manche.</p>';return}
-    const cand=sync.teams[team].map(id=>sync.players.find(x=>x.id===id)).filter(Boolean).filter(x=>x.id!==p.id);
-    out.innerHTML=`<div class="big">MANCHE ${r.number}<br><span style="font-size:15px">ÉQUIPE ${team}</span></div><h2>🕵️ QUI EST LE SABOTEUR ?</h2><div id="choices"></div><button id="send" style="width:100%;margin-top:10px">VOTER</button>`;
-    let sel=null;const ch=document.getElementById("choices");ch.innerHTML=cand.map(x=>`<button class="voteChoice" data-id="${esc(x.id)}">${esc(x.name)}</button>`).join("");
-    ch.querySelectorAll("button").forEach(b=>b.onclick=()=>{ch.querySelectorAll("button").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");sel=b.dataset.id});
-    document.getElementById("send").onclick=async()=>{
-      const choice=cand.find(x=>x.id===sel);if(!choice)return alert("⚠️ Vote invalide.");
-      const vote={type:"vote",voterId:p.id,code:c,round:r.number,team,choice:choice.name,nonce:Math.random().toString(36).slice(2)};
-      const url=location.href.split("#")[0].split("?")[0]+"#vote="+btoa(unescape(encodeURIComponent(JSON.stringify(vote))));
-      localStorage.setItem(key,"1");out.innerHTML='<div class="voteStatus voteOk">✅ TON VOTE A ÉTÉ ENREGISTRÉ</div><button id="copy" style="width:100%;margin-top:10px">📋 COPIER MON VOTE</button>';
-      document.getElementById("copy").onclick=async()=>{try{await navigator.clipboard.writeText(url);document.getElementById("copy").textContent="✅ LIEN COPIÉ"}catch(e){prompt("Copie ce lien :",url)}};
-    };
-  };
-}
-
-function renderAll(){renderPlayers();renderTeams();populateRound();renderRanking();renderOverlay();renderAccess()}
-if(new URLSearchParams(location.search).get("vote")==="1"){launchVoteMode();}else{
+function renderAll(){renderPlayers();renderTeams();populateRound();renderRanking();renderOverlay();renderAccess();}
 document.querySelectorAll(".tab").forEach(b=>b.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.remove("active"));document.querySelectorAll("section").forEach(x=>x.classList.remove("activeSec"));b.classList.add("active");document.getElementById(b.dataset.tab).classList.add("activeSec")});
 document.getElementById("addBtn").onclick=addPlayer;document.getElementById("nameInput").onkeydown=e=>{if(e.key==="Enter")addPlayer()};document.getElementById("balanceBtn").onclick=bestSplit;
 document.getElementById("clearBtn").onclick=()=>{if(confirm("Tout effacer ?")){state={players:[],teams:{A:[],B:[]},scores:{},rounds:[],access:{},activeRound:null,votesByRound:{}};save()}};
@@ -349,7 +321,6 @@ document.getElementById("resetRoundBtn").onclick=populateRound;
 document.getElementById("openOverlay").onclick=openOverlay;
 document.getElementById("copyOverlay").onclick=async()=>{await navigator.clipboard.writeText(location.href);alert("Lien copié.")};
 importVoteFromHash(); renderAll(); renderVoteUrl();
-}
 
 function token(){return Math.random().toString(36).slice(2,8).toUpperCase()+"-"+Math.random().toString(36).slice(2,8).toUpperCase()}
 function generateAccess(){
@@ -358,10 +329,10 @@ function generateAccess(){
  alert("Accès générés. Envoie à chaque joueur uniquement son propre code.");
 }
 function adminBaseUrl(){return location.href.split("#")[0].split("?")[0]}
-function voteBaseUrl(){return adminBaseUrl()+"?vote=1"}
+function voteBaseUrl(){return new URL("vote.html",location.href).href}
 function renderVoteUrl(){const e=document.getElementById("voteUrl");if(e)e.textContent=voteBaseUrl()}
 async function copyVoteLink(){const u=voteBaseUrl();try{await navigator.clipboard.writeText(u);alert("Lien de vote copié.")}catch(e){prompt("Copie ce lien :",u)}}
-function syncPayload(){return btoa(unescape(encodeURIComponent(JSON.stringify({players:state.players,teams:state.teams,access:state.access,activeRound:state.activeRound}))))}
+function syncPayload(){return btoa(unescape(encodeURIComponent(JSON.stringify({players:state.players,teams:state.teams,access:state.access,activeRound:state.activeRound?{number:state.activeRound.number,startedAt:state.activeRound.startedAt}:null}))))}
 async function copySyncLink(){if(!state.activeRound)return alert("Lance d'abord une manche.");const u=voteBaseUrl()+"#sync="+syncPayload();try{await navigator.clipboard.writeText(u);alert("Lien de synchronisation copié.")}catch(e){prompt("Copie ce lien :",u)}}
 function importVoteFromHash(){
   if(!location.hash.startsWith("#vote="))return;
@@ -390,7 +361,7 @@ function teamOf(id){return state.teams.A.includes(id)?"Équipe A":state.teams.B.
 function openPlayerPortal(){
   let w=window.open("","playerPortal","width=560,height=850");
   if(!w)return alert("Autorise les pop-ups pour ouvrir le portail.");
-  const DATA=JSON.stringify({players:state.players,teams:state.teams,access:state.access,activeRound:state.activeRound});
+  const DATA=JSON.stringify({players:state.players,teams:state.teams,access:state.access,activeRound:state.activeRound?{number:state.activeRound.number,startedAt:state.activeRound.startedAt}:null});
   const BASE=JSON.stringify(voteBaseUrl());
   w.document.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SABOTEUR — Vote</title><style>
   body{margin:0;background:#090c12;color:#fff;font-family:Arial;padding:16px}.portal{max-width:520px;margin:25px auto;background:#121824;border:1px solid #2a3445;border-radius:18px;padding:22px}input,button{width:100%;box-sizing:border-box;padding:13px;margin-top:9px;border-radius:10px;border:1px solid #2a3445;background:#0d121b;color:#fff}.code{text-transform:uppercase;letter-spacing:2px}button{background:#ff4655;border:0;font-weight:800}.secondary{background:#273143}.big{font-size:24px;font-weight:900;text-align:center;padding:18px;border-radius:12px;margin:14px 0;background:#1a2130}.voteChoice{display:block;width:100%;text-align:left;background:#1a2130}.selected{border-color:#ff4655;background:#32151a!important}.ok{padding:14px;border-radius:10px;background:#152b20;color:#46d369}.err{padding:14px;border-radius:10px;background:#32151a;color:#ff6572}.muted{color:#9aa5b5}</style></head><body><div class="portal"><h1>LE <span style="color:#ff4655">SABOTEUR</span></h1><div id="app"><p class="muted">Entre ton code personnel.</p><input id="code" class="code" placeholder="XXXXXX-XXXXXX"><button id="go">ACCÉDER</button></div></div><script>

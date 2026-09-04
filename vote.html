@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Le SABOTEUR — Vote</title>
+<style>
+:root{--bg:#090c12;--panel:#121824;--panel2:#1a2130;--text:#f3f5f8;--muted:#9aa5b5;--accent:#ff4655;--green:#46d369;--line:#2a3445}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;background:linear-gradient(135deg,#090c12,#111827);color:var(--text);font-family:Inter,system-ui,Arial,sans-serif;padding:18px}
+.portal{max-width:520px;margin:30px auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:22px;box-shadow:0 15px 50px #0006}
+h1{text-align:center;margin:0 0 8px;font-size:28px}h1 span{color:var(--accent)}h2{font-size:21px;margin:18px 0 10px}.muted{color:var(--muted)}
+input,button{width:100%;padding:14px;margin-top:10px;border-radius:11px;border:1px solid var(--line);background:#0d121b;color:white;font-size:16px}input{outline:none}.code{text-transform:uppercase;letter-spacing:2px;text-align:center}button{border:0;background:var(--accent);font-weight:800;cursor:pointer}.secondary{background:#273143}.voteChoice{text-align:left;background:var(--panel2);border:2px solid var(--line)}.voteChoice.selected{border-color:var(--accent);background:#32151a}.big{font-size:24px;font-weight:900;text-align:center;padding:18px;border-radius:12px;margin:14px 0;background:var(--panel2)}.ok,.err{padding:15px;border-radius:11px;margin-top:12px}.ok{background:#152b20;color:var(--green)}.err{background:#32151a;color:#ff6572}.tiny{font-size:12px}.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="portal">
+  <h1>LE <span>SABOTEUR</span></h1>
+  <div id="app"><p class="muted">Entre ton code personnel.</p><input id="code" class="code" placeholder="XXXXXX-XXXXXX" autocomplete="off"><button id="go">ACCÉDER</button></div>
+</div>
+<script>
+const ADMIN_URL=new URL("index.html",location.href).href;
+let sync=null;
+try{sync=JSON.parse(localStorage.getItem("saboteurVoteSync")||"null")}catch(e){sync=null}
+function esc(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]))}
+function decode64(x){return JSON.parse(decodeURIComponent(escape(atob(x))))}
+function encode64(x){return btoa(unescape(encodeURIComponent(JSON.stringify(x))))}
+function teamOf(id){if(!sync)return null;return sync.teams.A.includes(id)?"A":sync.teams.B.includes(id)?"B":null}
+function showSync(){
+ const app=document.getElementById("app");
+ if(!sync){app.innerHTML='<p class="err">⚠️ Cette page est prête, mais ton téléphone n’a pas encore reçu la manche actuelle.</p><p class="muted">Demande à l’organisateur de t’envoyer le lien de synchronisation, ouvre-le une fois, puis reviens sur ce même lien de vote.</p>';return false}
+ return true;
+}
+function handleSyncHash(){
+ if(!location.hash.startsWith("#sync="))return;
+ try{
+   const d=decode64(location.hash.slice(6));
+   if(!d||!d.players||!d.teams||!d.access||!d.activeRound)throw new Error();
+   // Intentionally only stores the public voting snapshot. No saboteur role is included.
+   sync=d;localStorage.setItem("saboteurVoteSync",JSON.stringify(sync));
+   history.replaceState(null,"",location.pathname+location.search);
+ }catch(e){document.getElementById("app").innerHTML='<p class="err">⚠️ Synchronisation invalide.</p>'}
+}
+function renderVote(){
+ const app=document.getElementById("app");
+ if(!showSync())return;
+ const c=document.getElementById("code").value.trim().toUpperCase();
+ const p=sync.players.find(x=>sync.access[x.id]===c);
+ if(!p){app.innerHTML='<div class="err">⚠️ Vote invalide.</div><button class="secondary" onclick="location.reload()">Réessayer</button>';return}
+ const r=sync.activeRound;
+ if(!r){app.innerHTML='<div class="big">⏳ Aucune manche en cours</div>';return}
+ const team=teamOf(p.id);
+ if(!team){app.innerHTML='<div class="err">⚠️ Tu n’es actuellement affecté à aucune équipe.</div>';return}
+ const key="saboteurVoted_"+p.id+"_"+r.number;
+ if(localStorage.getItem(key)){app.innerHTML='<div class="ok">✅ TON VOTE A ÉTÉ ENREGISTRÉ</div><p class="muted">Tu ne peux plus le modifier pour cette manche.</p>';return}
+ const candidates=sync.teams[team].map(id=>sync.players.find(x=>x.id===id)).filter(Boolean).filter(x=>x.id!==p.id);
+ app.innerHTML='<div class="big">MANCHE '+r.number+'<br><span style="font-size:15px">ÉQUIPE '+team+'</span></div><h2>🕵️ QUI EST LE SABOTEUR ?</h2><div id="choices">'+candidates.map(x=>'<button class="voteChoice" data-id="'+esc(x.id)+'">'+esc(x.name)+'</button>').join('')+'</div><button id="send">VOTER</button><p class="muted tiny">Ton vote sera transmis à l’organisateur par un lien.</p>';
+ let selected=null;
+ document.querySelectorAll(".voteChoice").forEach(b=>b.onclick=()=>{document.querySelectorAll(".voteChoice").forEach(x=>x.classList.remove("selected"));b.classList.add("selected");selected=b.dataset.id});
+ document.getElementById("send").onclick=async()=>{
+   const choice=candidates.find(x=>x.id===selected);if(!choice)return alert("⚠️ Vote invalide.");
+   const vote={type:"vote",voterId:p.id,code:c,round:r.number,team,choice:choice.name,nonce:Math.random().toString(36).slice(2)};
+   const url=ADMIN_URL+"#vote="+encode64(vote);
+   localStorage.setItem(key,"1");
+   app.innerHTML='<div class="ok">✅ TON VOTE A ÉTÉ ENREGISTRÉ</div><button id="copy">📋 COPIER MON VOTE</button><p class="muted">Envoie ce lien à l’organisateur sur Discord.</p>';
+   document.getElementById("copy").onclick=async()=>{try{await navigator.clipboard.writeText(url);document.getElementById("copy").textContent="✅ LIEN COPIÉ"}catch(e){prompt("Copie ce lien :",url)}};
+ };
+}
+handleSyncHash();
+if(sync&&sync.activeRound){document.getElementById("code").value=""}
+document.getElementById("go").onclick=renderVote;
+</script>
+</body>
+</html>
